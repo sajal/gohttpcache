@@ -102,7 +102,8 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 
 	//4.2.1.  Calculating Freshness Lifetime
 	// Date header is needed to calculate freshness from origin.
-	// TODO: For now, if date is not present we assume it to be Now
+	// rfc7231 section 7.1.1.2 clarifies recipient with a clock uses
+	// Now if Date is missing
 
 	var date time.Time
 	datehdr, dateok := reshdrs[http.CanonicalHeaderKey("Date")]
