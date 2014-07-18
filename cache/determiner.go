@@ -137,7 +137,7 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 	// TODO : Dear future me, find a proper parser to extract directives.
 
 	// 5.2.2.1 must-revalidate  - no stale
-	if directiveincc(cc, "must-revalidate") {
+	if directiveincc(cachecontrol, "must-revalidate") {
 		stale = false
 	}
 
@@ -145,14 +145,32 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 	// Simple version without arguments, cache, but set ttl to 0 and dont allow stale.
 	// Actual version, look for field names and handle them accordingly and dont mangle ttl.
 	// TODO: Actually implement actual version
-	if directiveincc(cc, "no-cache") {
+	if directiveincc(cachecontrol, "no-cache") {
 		ttl = time.Duration(0)
+		stale = false
 	}
+	// 5.2.2.3 no-store.
+	// This is somewhat confusing and open to interpretation.
+	// "the cache MUST NOT intentionally store the information in non-volatile storage"
+	// For our case we will set store to false but let cache be true.
+	// tl;dr allow this to be stored in memory, but not permanent storage?
+	if directiveincc(cachecontrol, "no-store") {
+		store = false
+	}
+	//5.2.2.4.  no-transform
+	//We do nothing with it for now. Transformers need to determine this on their own.
+	//5.2.2.5.  public
+	//If public is present, request is cachable even if its normally not!
+	if directiveincc(cachecontrol, "public") {
+		cache = true
+		store = true
+	}
+	//progress http://tools.ietf.org/html/rfc7234#section-5.2.2.6
 	return
 }
 
 //directiveincc checks if any of the headers contain a particular directive or not.
-func directiveincc(cachecontrol []string, directive string) (present bool){
+func directiveincc(cachecontrol []string, directive string) (present bool) {
 	for _, c := range cachecontrol {
 		if strings.Contains(c, directive) {
 			present = true
