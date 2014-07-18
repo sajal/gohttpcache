@@ -18,11 +18,11 @@ func NewDeterminer(ispublic bool) Determiner {
 }
 
 func NewPrivateDeterminer() Determiner {
-	return Determiner{ispublic: false, cachablebydefault: []int{200, 404}}
+	return NewDeterminer(false)
 }
 
 func NewPublicDeterminer() Determiner {
-	return Determiner{ispublic: true, cachablebydefault: []int{200, 404}}
+	return NewDeterminer(false)
 }
 
 //Determine determines cachability of a request/response pair.
