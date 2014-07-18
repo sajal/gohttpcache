@@ -99,7 +99,8 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 	}
 
 	cache = true //From here on, a request is cachable.
-
+	store = true
+	stale = true
 	//4.2.1.  Calculating Freshness Lifetime
 	// Date header is needed to calculate freshness from origin.
 	// rfc7231 section 7.1.1.2 clarifies recipient with a clock uses
@@ -125,13 +126,39 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 			expires, err := http.ParseTime(expiry[0])
 			ttl = expires.Sub(date)
 			if err != nil {
-				//TODO: Use Heuristics
+				//TODO: Use Heuristics 4.2.2
 			}
 		} else {
-			//TODO: Use Heuristics
+			//TODO: Use Heuristics 4.2.2
 		}
 	}
-	//Progress: http://tools.ietf.org/html/rfc7234#section-4.2.1
+	//Skipping until 5.2.2 because other stuff relates to handling request/responses
+	// Section 5.2.2 Response Cache-Control Directives
+	// TODO : Dear future me, find a proper parser to extract directives.
+
+	// 5.2.2.1 must-revalidate  - no stale
+	if directiveincc(cc, "must-revalidate") {
+		stale = false
+	}
+
+	// 5.2.2.2 no-cache .
+	// Simple version without arguments, cache, but set ttl to 0 and dont allow stale.
+	// Actual version, look for field names and handle them accordingly and dont mangle ttl.
+	// TODO: Actually implement actual version
+	if directiveincc(cc, "no-cache") {
+		ttl = time.Duration(0)
+	}
+	return
+}
+
+//directiveincc checks if any of the headers contain a particular directive or not.
+func directiveincc(cachecontrol []string, directive string) (present bool){
+	for _, c := range cachecontrol {
+		if strings.Contains(c, directive) {
+			present = true
+			return
+		}
+	}
 	return
 }
 
