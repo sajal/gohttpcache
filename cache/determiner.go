@@ -119,6 +119,7 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 	}
 	ttltmp, err1 := getmaxageval(self.ispublic, cachecontrol)
 	if err1 == nil {
+		//TODO: Take Age header value into account! section 5.1
 		ttl = time.Duration(ttltmp) * time.Second
 	} else {
 		//Look for expiry header
