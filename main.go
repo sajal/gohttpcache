@@ -9,8 +9,8 @@ import (
 func main() {
 	fmt.Println("Hello World")
 	d := gohttpcache.NewPublicDeterminer()
-	req := make(map[string][]string)
-	res := make(map[string][]string)
-	res[http.CanonicalHeaderKey("Cache-Control")] = []string{"public, s-maxage=300, max-age=3600"}
+	req := make(http.Header)
+	res := make(http.Header)
+	res.Set("Cache-Control", "public, s-maxage=300, max-age=3600")
 	fmt.Println(d.Determine("GET", 200, req, res))
 }
