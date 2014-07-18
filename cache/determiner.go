@@ -18,11 +18,11 @@ func NewDeterminer(ispublic bool) Determiner {
 }
 
 func NewPrivateDeterminer() Determiner {
-	return Determiner{ispublic: false}
+	return Determiner{ispublic: false, cachablebydefault: []int{200, 404}}
 }
 
 func NewPublicDeterminer() Determiner {
-	return Determiner{ispublic: true}
+	return Determiner{ispublic: true, cachablebydefault: []int{200, 404}}
 }
 
 //Determine determines cachability of a request/response pair.
@@ -107,25 +107,26 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 	// Now if Date is missing
 
 	var date time.Time
+	var err1 error
 	datehdr, dateok := reshdrs[http.CanonicalHeaderKey("Date")]
 	if dateok {
-		date, err = http.ParseTime(datehdr[0])
-		if err != nil {
+		date, err1 = http.ParseTime(datehdr[0])
+		if err1 != nil {
 			date = time.Now()
 		}
 	} else {
 		date = time.Now()
 	}
-	ttltmp, err := getmaxageval(self.ispublic, cachecontrol)
-	if err == nil {
+	ttltmp, err1 := getmaxageval(self.ispublic, cachecontrol)
+	if err1 == nil {
 		ttl = time.Duration(ttltmp) * time.Second
 	} else {
 		//Look for expiry header
 		expiry, expiryok := reshdrs[http.CanonicalHeaderKey("Expires")]
 		if expiryok {
-			expires, err := http.ParseTime(expiry[0])
+			expires, err1 := http.ParseTime(expiry[0])
 			ttl = expires.Sub(date)
-			if err != nil {
+			if err1 != nil {
 				//TODO: Use Heuristics 4.2.2
 			}
 		} else {
@@ -165,7 +166,32 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 		cache = true
 		store = true
 	}
-	//progress http://tools.ietf.org/html/rfc7234#section-5.2.2.6
+	// 5.2.2.6.  private
+	// Simple version, if present, public cache may not cache or store response.
+	// Actual version, if field names are present then simply hide them.
+	// TODO: Implement the actual version.
+	if self.ispublic && directiveincc(cachecontrol, "private") {
+		cache = false
+		store = false
+	}
+	//5.2.2.7.  proxy-revalidate. Just like must-revalidate but applies only to shared cache.
+	if self.ispublic && directiveincc(cachecontrol, "proxy-revalidate") {
+		stale = false
+	}
+	//5.2.2.8.  max-age and 5.2.2.9.  s-maxage implemented while calculating ttl
+	//5.4.  Pragma
+	// Pragma is looked at only if cache-control is missing.
+	if len(cachecontrol) == 0 {
+		pragma, pragmaok := reshdrs[http.CanonicalHeaderKey("Pragma")]
+		if pragmaok {
+			if directiveincc(pragma, "no-cache") {
+				//no-cache appears in pragma, so dont cache.
+				cache = false
+				store = false
+			}
+		}
+	}
+	//progress http://tools.ietf.org/html/rfc7234#section-5.5
 	return
 }
 
