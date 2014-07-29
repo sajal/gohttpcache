@@ -16,12 +16,13 @@ type DeterminerExpected struct {
 }
 
 type DeterminerTestCase struct {
-	RespStatus int
-	Method     string
-	ReqHdr     http.Header
-	ResHdr     http.Header
-	Public     DeterminerExpected
-	Private    DeterminerExpected
+	RespStatus  int
+	Method      string
+	ReqHdr      http.Header
+	ResHdr      http.Header
+	Public      DeterminerExpected
+	Private     DeterminerExpected
+	Explanation string
 }
 
 func (self *DeterminerTestCase) runindividualtest(t *testing.T, determiner Determiner, expectation DeterminerExpected) (testpass bool) {
@@ -90,6 +91,7 @@ func Test_PublicDeterminer(t *testing.T) {
 			time.Duration(3600) * time.Second,
 			nil,
 		},
+		"",
 	}
 	dt.runtest(t)
 }
