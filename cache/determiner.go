@@ -22,7 +22,7 @@ func NewPrivateDeterminer() Determiner {
 }
 
 func NewPublicDeterminer() Determiner {
-	return NewDeterminer(false)
+	return NewDeterminer(true)
 }
 
 //Determine determines cachability of a request/response pair.
