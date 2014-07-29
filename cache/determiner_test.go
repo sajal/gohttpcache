@@ -61,7 +61,7 @@ func (self *DeterminerTestCase) runtest(t *testing.T) {
 		t.Error(self)
 	}
 	if !self.runindividualtest(t, NewPrivateDeterminer(), self.Private) {
-		t.Error("^ Public test failed")
+		t.Error("^ Private test failed")
 		t.Error(self)
 	}
 }
