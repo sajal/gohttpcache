@@ -26,7 +26,7 @@ func NewPublicDeterminer() Determiner {
 }
 
 //Determine determines cachability of a request/response pair.
-func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, reshdrs http.Header) (cache, store, stale bool, ttl time.Duration, err error) {
+func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, reshdrs http.Header) (cache, store, stale, heuristics bool, ttl time.Duration, err error) {
 	//Section 3..A cache MUST NOT store a response to any request, unless
 	//The request method is understood by the cache and defined as being cacheable.
 	// TODO: Currently hardcoding this to GET only, needs to be configurable
@@ -128,10 +128,12 @@ func (self *Determiner) Determine(reqmethod string, respstatus int, reqhdrs, res
 			expires, err1 := http.ParseTime(expiry[0])
 			ttl = expires.Sub(date)
 			if err1 != nil {
-				//TODO: Use Heuristics 4.2.2
+				// Use Heuristics 4.2.2
+				heuristics = true
 			}
 		} else {
-			//TODO: Use Heuristics 4.2.2
+			//Use Heuristics 4.2.2
+			heuristics = true
 		}
 	}
 	//Skipping until 5.2.2 because other stuff relates to handling request/responses
