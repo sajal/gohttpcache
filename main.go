@@ -1,13 +1,17 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/sajal/gohttpcache/cache"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 )
+
+var redirecterr = errors.New("redirectionblocked")
 
 func printresponse(ctype string, cache, store, stale, heuristics bool, ttl time.Duration, err error) {
 	fmt.Println(ctype)
@@ -28,13 +32,13 @@ func main() {
 	if *url == "" {
 		panic("Url should be supplied")
 	}
-	client := &http.Client{}
+	client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error { return redirecterr }}
 	req, err := http.NewRequest("GET", *url, nil)
 	if err != nil {
 		panic(err)
 	}
 	resp, err := client.Do(req)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "redirectionblocked") {
 		panic(err)
 	}
 	reqraw, err := httputil.DumpRequest(req, false)
