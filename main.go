@@ -47,7 +47,7 @@ func main() {
 	}
 
 	pub := gohttpcache.NewPublicDeterminer()
-	pri := gohttpcache.NewPublicDeterminer()
+	pri := gohttpcache.NewPrivateDeterminer()
 	cache, store, stale, heuristics, ttl, err := pub.Determine("GET", 200, req.Header, resp.Header)
 	printresponse("public", cache, store, stale, heuristics, ttl, err)
 	cache, store, stale, heuristics, ttl, err = pri.Determine("GET", 200, req.Header, resp.Header)
