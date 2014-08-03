@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
+	"github.com/sajal/gohttpcache/cache"
 	"github.com/valyala/ybc/bindings/go/ybc"
 	"io"
 	"io/ioutil"
@@ -15,6 +16,7 @@ import (
 )
 
 var originmapping map[string]string
+var determiner gohttpcache.Determiner
 
 var (
 	objcache  ybc.Cacher
@@ -81,9 +83,13 @@ func fetchupstream(r *http.Request, origin string) (item *ybc.Item, err error) {
 	}
 	defer resp.Body.Close()
 	// load into cache...
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return
+
+	_, _, _, heuristics, ttl, err := determiner.Determine(r.Method, resp.StatusCode, req.Header, resp.Header)
+	if ttl == time.Duration(0) && heuristics {
+		ttl = time.Duration(24) * time.Hour
+	}
+	if ttl < time.Minute {
+		ttl = time.Minute
 	}
 
 	var buffer bytes.Buffer
@@ -94,8 +100,6 @@ func fetchupstream(r *http.Request, origin string) (item *ybc.Item, err error) {
 		return
 	}
 	hdrbyt := buffer.Bytes()
-	itemsize := len(body) + len(hdrbyt) + 2
-	//TODO: rebuild key here, and update vary in meta
 	key := buildcachekey(r, origin)
 	metaobj := &MetaObj{}
 	for _, k := range strings.Split(resp.Header.Get("Vary"), ",") {
@@ -108,9 +112,15 @@ func fetchupstream(r *http.Request, origin string) (item *ybc.Item, err error) {
 	if err != nil {
 		return
 	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	itemsize := len(body) + len(hdrbyt) + 2
 	metacache.Set(key, metabuffer.Bytes(), ybc.MaxTtl)
 	key = appendvary(key, r.Header, metaobj.Vary)
-	txn, err := objcache.NewSetTxn(key, itemsize, ybc.MaxTtl)
+	txn, err := objcache.NewSetTxn(key, itemsize, ttl)
 	if err != nil {
 		return
 	}
@@ -165,15 +175,17 @@ func loadmeta(r io.Reader) (hdr MetaItem, err error) {
 	return
 }
 
-func getitem(key []byte, r *http.Request, origin string) (item *ybc.Item, err error) {
+func getitem(key []byte, r *http.Request, origin string) (hit bool, item *ybc.Item, err error) {
 	item, err = objcache.GetDeItem(key, time.Second)
+	hit = true
 	if err != nil {
+		hit = false
 		item, err = fetchupstream(r, origin)
 	}
 	return
 }
 
-func serveitem(w http.ResponseWriter, item *ybc.Item) {
+func serveitem(hit bool, w http.ResponseWriter, item *ybc.Item) {
 	defer item.Close()
 	meta, err := loadmeta(item)
 	if err != nil {
@@ -182,11 +194,16 @@ func serveitem(w http.ResponseWriter, item *ybc.Item) {
 		return
 	}
 	for k, v := range meta.Header {
-		if k != http.CanonicalHeaderKey("Date") {
+		if k != http.CanonicalHeaderKey("Date") || k != http.CanonicalHeaderKey("Transfer-Encoding") { //Strip out Date header from cache. Let Go put that in
 			for _, val := range v {
 				w.Header().Add(k, val)
 			}
 		}
+	}
+	if hit {
+		w.Header().Set("X-Gocache", "HIT")
+	} else {
+		w.Header().Set("X-Gocache", "MISS")
 	}
 	w.Header().Set("Age", fmt.Sprintf("%9.f", time.Since(meta.Fetched).Seconds()))
 	w.WriteHeader(meta.Status)
@@ -210,11 +227,12 @@ func cachecheckhandler(w http.ResponseWriter, r *http.Request, origin string) {
 	vary, err := getvary(key)
 	key = appendvary(key, r.Header, vary)
 	log.Println(string(key))
-	item, err := getitem(key, r, origin)
+	hit, item, err := getitem(key, r, origin)
 	if err != nil {
+		log.Println(err)
 		servefail(w)
 	} else {
-		serveitem(w, item)
+		serveitem(hit, w, item)
 	}
 }
 
@@ -233,13 +251,15 @@ func main() {
 	originmapping["cdn.cdnplanet.com"] = "www.cdnplanet.com"
 	originmapping["cdn.turbobytes.com"] = "www.turbobytes.com"
 	client = &http.Transport{}
+	determiner = gohttpcache.NewPublicDeterminer()
 	metacacheconfig := ybc.Config{
-		MaxItemsCount: ybc.SizeT(500 * 1000), //500k keys.. i.e. ip+cdn combos
+		MaxItemsCount: ybc.SizeT(500 * 1000), //500k keys..
 	}
 	metacache, _ = metacacheconfig.OpenCache(true)
 
 	objcacheconfig := ybc.Config{
-		MaxItemsCount: ybc.SizeT(500 * 1000), //500k keys.. i.e. ip+cdn combos
+		MaxItemsCount: ybc.SizeT(500 * 1000),        //500k keys..
+		DataFileSize:  ybc.SizeT(500 * 1024 * 1024), //500 MB
 	}
 	objcache, _ = objcacheconfig.OpenCache(true)
 
