@@ -136,8 +136,8 @@ func (self *Service) getbasekey(r *http.Request) []byte {
 //The main proxyserver handler
 type ProxyServer struct {
 	configs     map[string]*Service //Thread safe for read only. TODO: locking for updates...
-	objcache    ybc.Cacher          //Thread safe
-	metacache   ybc.Cacher          //Thread safe
+	objcache    *ybc.Cache          //Thread safe
+	metacache   *ybc.Cache          //Thread safe
 	configmutex sync.RWMutex        //FUTURE: We will use this for locking to do updates
 }
 
@@ -223,7 +223,7 @@ func (self *ProxyServer) cachehandler(req *transaction, service *Service) {
 		//Yay cache hit...
 		req.hit = true
 		req.serve(item)
-		item.Close()
+		//item.Close()
 	} else {
 		self.handlecachemiss(req, service)
 	}
@@ -292,18 +292,56 @@ func (self *ProxyServer) fetchfromorigin(req *transaction, service *Service) (ke
 	self.metacache.Set(req.metakey, metabuffer.Bytes(), ybc.MaxTtl)
 	key = self.appendvary(req.metakey, req.clientreq.Header, vary)
 
-	err = storeheaders(hdrbyt, &buf)
 	if err != nil {
 		return
 	}
 	req.origintime = time.Since(fetchstart)
 	//_, err = io.Copy(&buf, resp.Body)
-	req.servebody(*hdrobj, resp.Body)
+	rdr := NewSpyReader(resp.Body)
+	cdone := make(chan bool)
+	go func() {
+		//Spoonfeed maybe
+		req.servebody(*hdrobj, rdr)
+		cdone <- true
+	}()
+	storeincache(key, time.Minute, hdrbyt, rdr, self.objcache)
 	if err != nil {
 		return
 	}
-
+	<-cdone
 	return
+}
+
+func storeincache(key []byte, ttl time.Duration, hdrbyt []byte, item *SpyReader, cache *ybc.Cache) {
+	body, err := item.Dump()
+	if err != nil {
+		log.Println(string(key), err)
+	}
+	itemsize := len(body) + len(hdrbyt) + 2
+
+	txn, err := cache.NewSetTxn(key, itemsize, ttl)
+	if err != nil {
+		log.Println(string(key), err)
+		return
+	}
+	err = storeheaders(hdrbyt, txn)
+	if err != nil {
+		log.Println(string(key), err)
+		txn.Rollback()
+		return
+	}
+	n, err := txn.Write(body)
+	if err != nil {
+		txn.Rollback()
+		return
+	}
+	log.Println(string(key), n, "bytes written")
+	err = txn.Commit()
+	if err != nil {
+		log.Println(string(key), err)
+	} else {
+		log.Println(string(key), "stored successfully in cache. yay")
+	}
 }
 
 func storeheaders(hdrbyt []byte, w io.Writer) (err error) {
