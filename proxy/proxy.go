@@ -113,7 +113,13 @@ func DefaultBaseKeyFunc(r *http.Request, id string) (key []byte) {
 	key = append([]byte(r.Method), []byte(id)...)
 	key = append(key, []byte(r.RequestURI)...)
 	return
+}
 
+//Example Key function that ignores querystrings for cache key
+func QSIgnoreKeyFunc(r *http.Request, id string) (key []byte) {
+	key = append([]byte(r.Method), []byte(id)...)
+	key = append(key, []byte(strings.Split(r.RequestURI, "?")[0])...)
+	return
 }
 
 //Struct that a user defines for a service
